@@ -1,118 +1,151 @@
 #!/usr/bin/env python
+import argparse
 import os
 import os.path
 import re
-from datetime import datetime, time
+from datetime import datetime
 
 import exifread
 
-EXTENSIONS = ('.jpg', '.jpeg')
 
-# what tags use to redate file (use first found)
-# DT_TAGS = ["Image DateTime", "EXIF DateTimeOriginal", "DateTime"]
+DESCRIPTION = 'Arrange photos folder by EXIF DateTimeOriginal from jpeg files.'
+VERSION = "1.0"
+AUTHOR = '(c) usv 2016.'
+EXTENSIONS = ('.jpg', '.jpeg')
 DT_TAGS = ["EXIF DateTimeOriginal"]
 
-PATH = '/media/combox/Фото'
 
+class PhotoFolder:
 
-def get_exif_date(path_file):
-    dt_value = None
-    f = open(path_file, 'rb')
-    try:
-        tags = exifread.process_file(f)
-        for tag in DT_TAGS:
-            try:
-                ts = str(tags[tag]).strip().replace('-', ':')
-                # dt_value = datetime.strptime(ts + 'UTC', "%Y:%m:%d %H:%M:%S%Z")
-                dt_value = datetime.strptime(ts, '%Y:%m:%d %H:%M:%S')
-                break
-            except:
-                continue
-        if dt_value:
-            return dt_value
-    finally:
-        f.close()
-    return None
+    def __init__(self):
+        self.folder = '.'
+        self.is_test = True
+        self.is_verbose = True
+        self.skip_folder_template = None
+        self.count_folders = 0
+        self.count_files = 0
+        self.count_removed_folders = 0
+        self.count_moved_files = 0
 
-
-def make_path_file(root, path_file):
-    dt_value = get_exif_date(path_file)
-    new_path_file = path_file
-    if dt_value:
-        dir_year = '%4d' % dt_value.year
-        dir_date = '%4d-%02d-%02d' % (dt_value.year, dt_value.month, dt_value.day)
-        head, tail = os.path.split(path_file)
-        new_path_file = os.path.join(root, dir_year, dir_date, tail)
-    return new_path_file
-
-
-def compare_path_file(new_path_file, old_path_file):
-    return new_path_file == old_path_file
-
-
-def move_file(root, path_file, is_fake):
-    new_path_file = make_path_file(root, path_file)
-    if not compare_path_file(new_path_file, path_file) \
-            and not os.path.isfile(new_path_file):
+    def get_exif_date(self, path_file):
+        dt_value = None
         try:
-            new_dir = os.path.dirname(new_path_file)
-            if not os.path.exists(new_dir):
-                os.makedirs(new_dir)
-            if os.path.exists(new_dir):
-                if not is_fake:
-                    os.rename(path_file, new_path_file)
-                print('moved', path_file, new_path_file)
-                return 1
+            f = open(path_file, 'rb')
+            try:
+                tags = exifread.process_file(f)
+                for tag in DT_TAGS:
+                    try:
+                        ts = str(tags[tag]).strip().replace('-', ':')
+                        # dt_value = datetime.strptime(ts + 'UTC', "%Y:%m:%d %H:%M:%S%Z")
+                        dt_value = datetime.strptime(ts, '%Y:%m:%d %H:%M:%S')
+                        break
+                    except:
+                        continue
+                if dt_value:
+                    return dt_value
+                if self.is_verbose:
+                    print('tag not found', path_file)
+            finally:
+                f.close()
         except:
-            print('failed', path_file, new_path_file)
-    return 0
+            if self.is_verbose:
+                print('failed to open', path_file)
+            return None
+        return None
 
+    def make_path_file(self, path_file):
+        dt_value = self.get_exif_date(path_file)
+        new_path_file = path_file
+        if dt_value:
+            dir_year = '%4d' % dt_value.year
+            dir_date = '%4d-%02d-%02d' % (dt_value.year, dt_value.month, dt_value.day)
+            head, tail = os.path.split(path_file)
+            new_path_file = os.path.join(self.folder, dir_year, dir_date, tail)
+        return new_path_file
 
-def move_photos(path_name, is_fake):
-    start_time = datetime.now()
-    count_all = 0
-    count_moved = 0
-    #p = re.compile('[a-zа-я]', flags=re.IGNORECASE | re.LOCALE)
-    p = re.compile('[a-zA-Zа-яА-Я]')
-    for root, dirs, files in os.walk(path_name):
-        for name in files:
-            count_all += 1
-            head, ext = os.path.splitext(name)
-            if ext.lower() in EXTENSIONS:
-                if not p.search(root[len(path_name):]):
-                    count_moved += move_file(path_name, os.path.join(root, name), is_fake)
-    finish_time = datetime.now()
-    print("move_photos")
-    print("start at ", start_time)
-    print("finish at ", finish_time)
-    print("overall time", finish_time - start_time)
-    print(count_all, ' files in tree')
-    print(count_moved, ' moved files')
+    def move_file(self, path_file):
+        new_path_file = self.make_path_file(path_file)
+        if new_path_file != path_file and not os.path.isfile(new_path_file):
+            try:
+                new_dir = os.path.dirname(new_path_file)
+                if not os.path.exists(new_dir):
+                    os.makedirs(new_dir)
+                if not self.is_test:
+                    os.rename(path_file, new_path_file)
+                if self.is_verbose:
+                    print('moved', path_file, new_path_file)
+                return 1
+            except:
+                if self.is_verbose:
+                    print('failed', path_file, new_path_file)
+        return 0
 
-def remove_empty_folders(path_name, is_fake):
-    start_time = datetime.now()
-    count_all = 0
-    count_deleted = 0
-    for root, dirs, files in os.walk(path_name):
-        for name in dirs:
-            count_all += 1
-            if os.listdir(os.path.join(root, name)) == []:
+    def move_photos(self):
+        for root, dirs, files in os.walk(self.folder):
+            for name in files:
+                self.count_files += 1
+                head, ext = os.path.splitext(name)
+                if ext.lower() not in EXTENSIONS:
+                    continue
+                if self.skip_folder_template.search(root[len(self.folder):]):
+                    continue
+                self.count_moved_files += \
+                    self.move_file(os.path.join(self.folder, name))
+
+    def remove_empty_folders(self):
+        for root, dirs, files in os.walk(self.folder):
+            for name in dirs:
+                self.count_folders += 1
+                if os.listdir(os.path.join(root, name)):
+                    continue
                 try:
-                    if not is_fake:
+                    if not self.is_test:
                         os.removedirs(os.path.join(root, name))
-                    print('folder removed', os.path.join(root, name))
-                    count_deleted += 1
+                    self.count_removed_folders += 1
+                    if self.is_verbose:
+                        print('folder removed', os.path.join(root, name))
                 except:
                     continue
-    finish_time = datetime.now()
-    print("remove_empty_folders")
-    print("start at ", start_time)
-    print("finish at ", finish_time)
-    print("overall time", finish_time - start_time)
-    print(count_all, ' folders in tree')
-    print(count_deleted, ' folders removed')
+
+
+def createParser ():
+    parser = argparse.ArgumentParser(description=DESCRIPTION, epilog=AUTHOR, add_help=False)
+    parser.add_argument('--folder', '-f', action='store')
+    parser.add_argument('--test', '-t', action='store_true', help='switch to test mode')
+    parser.add_argument('--verbose', '-v', action="store_true", help='increase output verbosity')
+    parser.add_argument('--version', action='version', version='%(prog)s {}'.format(VERSION))
+    return parser
+
 
 if __name__ == '__main__':
-    is_fake = False
-    move_photos(PATH, is_fake)
-    remove_empty_folders(PATH, is_fake)
+    parser = createParser()
+    namespace = parser.parse_args()
+    print(parser.description)
+
+    folder = namespace.folder or os.path.dirname(__file__)
+    print('folder', folder)
+    print(namespace)
+
+    #DEBUG {
+    folder = '/media/dune-hdd/Фото'
+    namespace.test = True
+    namespace.verbose = True
+    # DEBUG }
+
+    start_time = datetime.now()
+    photo_folder = PhotoFolder()
+    photo_folder.folder = folder
+    photo_folder.is_test = namespace.test
+    photo_folder.is_verbose = namespace.verbose
+    photo_folder.skip_folder_template = re.compile('[a-zA-Zа-яА-Я]')
+    photo_folder.move_photos()
+    photo_folder.remove_empty_folders()
+    finish_time = datetime.now()
+
+    print('start at', start_time)
+    print('finish at', finish_time)
+    print('overall time', finish_time - start_time)
+    print(photo_folder.count_files, 'files')
+    print(photo_folder.count_moved_files, 'files moved')
+    print(photo_folder.count_folders, 'folders')
+    print(photo_folder.count_removed_folders, 'folders removed')
