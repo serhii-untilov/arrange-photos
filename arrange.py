@@ -50,7 +50,7 @@ def compare_path_file(new_path_file, old_path_file):
     return new_path_file == old_path_file
 
 
-def move_file(root, path_file):
+def move_file(root, path_file, is_fake):
     new_path_file = make_path_file(root, path_file)
     if not compare_path_file(new_path_file, path_file) \
             and not os.path.isfile(new_path_file):
@@ -59,7 +59,8 @@ def move_file(root, path_file):
             if not os.path.exists(new_dir):
                 os.makedirs(new_dir)
             if os.path.exists(new_dir):
-                #os.rename(path_file, new_path_file)
+                if not is_fake:
+                    os.rename(path_file, new_path_file)
                 print('moved', path_file, new_path_file)
                 return 1
         except:
@@ -67,7 +68,7 @@ def move_file(root, path_file):
     return 0
 
 
-def move_photos(path_name):
+def move_photos(path_name, is_fake):
     start_time = datetime.now()
     count_all = 0
     count_moved = 0
@@ -79,22 +80,39 @@ def move_photos(path_name):
             head, ext = os.path.splitext(name)
             if ext.lower() in EXTENSIONS:
                 if not p.search(root[len(path_name):]):
-                    count_moved += move_file(path_name, os.path.join(root, name))
+                    count_moved += move_file(path_name, os.path.join(root, name), is_fake)
     finish_time = datetime.now()
-    print("--------")
+    print("move_photos")
     print("start at ", start_time)
     print("finish at ", finish_time)
     print("overall time", finish_time - start_time)
     print(count_all, ' files in tree')
     print(count_moved, ' moved files')
 
-def delete_empty_dirs(path_name):
+def remove_empty_folders(path_name, is_fake):
+    start_time = datetime.now()
+    count_all = 0
+    count_deleted = 0
     for root, dirs, files in os.walk(path_name):
         for name in dirs:
-            if os.listdir(name) = "":
-                print('directory is empty', name)
-
+            count_all += 1
+            if os.listdir(os.path.join(root, name)) == []:
+                try:
+                    if not is_fake:
+                        os.removedirs(os.path.join(root, name))
+                    print('folder removed', os.path.join(root, name))
+                    count_deleted += 1
+                except:
+                    continue
+    finish_time = datetime.now()
+    print("remove_empty_folders")
+    print("start at ", start_time)
+    print("finish at ", finish_time)
+    print("overall time", finish_time - start_time)
+    print(count_all, ' folders in tree')
+    print(count_deleted, ' folders removed')
 
 if __name__ == '__main__':
-    #move_photos(PATH)
-    delete_empty_dirs(PATH)
+    is_fake = False
+    move_photos(PATH, is_fake)
+    remove_empty_folders(PATH, is_fake)
