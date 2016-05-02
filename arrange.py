@@ -9,7 +9,7 @@ from datetime import datetime
 import exifread
 
 
-DESCRIPTION = 'Arrange photo\'s folder by EXIF DateTimeOriginal from jpeg files.'
+DESCRIPTION = 'Arrange photos in folder and sub-folders by EXIF DateTimeOriginal from jpeg files.'
 VERSION = '1.0 (2 may 2016)'
 AUTHOR = 'USV'
 EXTENSIONS = ('.jpg', '.jpeg')
@@ -110,10 +110,11 @@ class PhotoFolder:
 
 def create_parser():
     parser = argparse.ArgumentParser(description=DESCRIPTION, epilog=AUTHOR, add_help=False)
-    parser.add_argument('--path', '-p', action='store')
-    parser.add_argument('--test', '-t', action='store_true', help='switch to test mode')
-    parser.add_argument('--verbose', '-v', action="store_true", help='increase output verbosity')
-    parser.add_argument('--version', action='version', version='%(prog)s {}'.format(VERSION))
+    parser.add_argument('--path', '-p', action='store', help='Set path to photo\'s folder, by default using current path.')
+    parser.add_argument('--test', '-t', action='store_true', help='Switch to test mode, without moving files and removing empty folders.')
+    parser.add_argument('--verbose', '-v', action="store_true", help='Increase output verbosity.')
+    parser.add_argument('--version', action='version', version='%(prog)s {}'.format(VERSION), help='Get programm\'s version.')
+    parser.add_argument('--help', action='help', help='Help.')
     return parser
 
 
