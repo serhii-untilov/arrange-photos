@@ -9,7 +9,7 @@ from datetime import datetime
 import exifread
 
 
-DESCRIPTION = 'Arrange photos folder by EXIF DateTimeOriginal from jpeg files.'
+DESCRIPTION = 'Arrange photo\'s folder by EXIF DateTimeOriginal from jpeg files.'
 VERSION = '1.0 (2 may 2016)'
 AUTHOR = 'USV'
 EXTENSIONS = ('.jpg', '.jpeg')
@@ -18,8 +18,8 @@ DT_TAGS = ['EXIF DateTimeOriginal']
 
 class PhotoFolder:
 
-    def __init__(self):
-        self.folder = '.'
+    def __init__(self, path):
+        self.path = path
         self.is_test = True
         self.is_verbose = True
         self.skip_folder_template = None
@@ -63,7 +63,7 @@ class PhotoFolder:
             dir_year = '%4d' % dt_value.year
             dir_date = '%4d-%02d-%02d' % (dt_value.year, dt_value.month, dt_value.day)
             head, tail = os.path.split(path_file)
-            new_path_file = os.path.join(self.folder, dir_year, dir_date, tail)
+            new_path_file = os.path.join(self.path, dir_year, dir_date, tail)
         return new_path_file
 
     def move_file(self, path_file):
@@ -84,16 +84,16 @@ class PhotoFolder:
         return 0
 
     def move_photos(self):
-        for root, dirs, files in os.walk(self.folder):
+        for root, dirs, files in os.walk(self.path):
             for name in files:
                 self.count_files += 1
                 head, ext = os.path.splitext(name)
                 if ext.lower() in EXTENSIONS:
-                    if not self.skip_folder_template.search(root[len(self.folder):]):
+                    if not self.skip_folder_template.search(root[len(self.path):]):
                         self.count_moved_files += self.move_file(os.path.join(root, name))
 
     def remove_empty_folders(self):
-        for root, dirs, files in os.walk(self.folder):
+        for root, dirs, files in os.walk(self.path):
             for name in dirs:
                 self.count_folders += 1
                 if os.listdir(os.path.join(root, name)):
@@ -110,7 +110,7 @@ class PhotoFolder:
 
 def create_parser():
     parser = argparse.ArgumentParser(description=DESCRIPTION, epilog=AUTHOR, add_help=False)
-    parser.add_argument('--folder', '-f', action='store')
+    parser.add_argument('--path', '-p', action='store')
     parser.add_argument('--test', '-t', action='store_true', help='switch to test mode')
     parser.add_argument('--verbose', '-v', action="store_true", help='increase output verbosity')
     parser.add_argument('--version', action='version', version='%(prog)s {}'.format(VERSION))
@@ -123,12 +123,9 @@ if __name__ == '__main__':
     print(parser.description)
     print(namespace)
 
-    folder = os.path.abspath(namespace.folder or '.')
-    print('folder', folder)
-
     start_time = datetime.now()
-    photo_folder = PhotoFolder()
-    photo_folder.folder = folder
+    photo_folder = PhotoFolder(os.path.abspath(namespace.path or '.'))
+    print('path', photo_folder.path)
     photo_folder.is_test = namespace.test
     photo_folder.is_verbose = namespace.verbose
     photo_folder.skip_folder_template = re.compile('[a-zA-Zа-яА-Я]')  # for skip commented folders
