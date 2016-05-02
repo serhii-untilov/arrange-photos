@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 import sys
 import argparse
 import os
@@ -10,10 +10,10 @@ import exifread
 
 
 DESCRIPTION = 'Arrange photos folder by EXIF DateTimeOriginal from jpeg files.'
-VERSION = "1.0"
-AUTHOR = 'USV, 1-2 may 2016'
+VERSION = '1.0 (2 may 2016)'
+AUTHOR = 'USV'
 EXTENSIONS = ('.jpg', '.jpeg')
-DT_TAGS = ["EXIF DateTimeOriginal"]
+DT_TAGS = ['EXIF DateTimeOriginal']
 
 
 class PhotoFolder:
@@ -37,7 +37,6 @@ class PhotoFolder:
                 for tag in DT_TAGS:
                     try:
                         ts = str(tags[tag]).strip().replace('-', ':')
-                        # dt_value = datetime.strptime(ts + 'UTC', "%Y:%m:%d %H:%M:%S%Z")
                         dt_value = datetime.strptime(ts, '%Y:%m:%d %H:%M:%S')
                         break
                     except:
@@ -50,10 +49,10 @@ class PhotoFolder:
                 f.close()
         except IOError as e:
             if self.is_verbose:
-                print("I/O error({0}): {1}".format(e.errno, e.strerror), path_file)
+                print('I/O error({0}): {1}'.format(e.errno, e.strerror), path_file)
         except:
             if self.is_verbose:
-                print('failed to open', path_file, "Unexpected error:", sys.exc_info()[0])
+                print('failed to open', path_file, 'Unexpected error:', sys.exc_info()[0])
             raise
         return None
 
@@ -89,11 +88,9 @@ class PhotoFolder:
             for name in files:
                 self.count_files += 1
                 head, ext = os.path.splitext(name)
-                if ext.lower() not in EXTENSIONS:
-                    continue
-                if self.skip_folder_template.search(root[len(self.folder):]):  # skip folders with comments
-                    continue
-                self.count_moved_files += self.move_file(os.path.join(root, name))
+                if ext.lower() in EXTENSIONS:
+                    if not self.skip_folder_template.search(root[len(self.folder):]):
+                        self.count_moved_files += self.move_file(os.path.join(root, name))
 
     def remove_empty_folders(self):
         for root, dirs, files in os.walk(self.folder):
@@ -111,7 +108,7 @@ class PhotoFolder:
                     continue
 
 
-def createParser ():
+def create_parser():
     parser = argparse.ArgumentParser(description=DESCRIPTION, epilog=AUTHOR, add_help=False)
     parser.add_argument('--folder', '-f', action='store')
     parser.add_argument('--test', '-t', action='store_true', help='switch to test mode')
@@ -121,12 +118,12 @@ def createParser ():
 
 
 if __name__ == '__main__':
-    parser = createParser()
+    parser = create_parser()
     namespace = parser.parse_args()
     print(parser.description)
     print(namespace)
 
-    folder = namespace.folder or os.path.dirname(__file__)
+    folder = os.path.abspath(namespace.folder or '.')
     print('folder', folder)
 
     start_time = datetime.now()
@@ -134,7 +131,7 @@ if __name__ == '__main__':
     photo_folder.folder = folder
     photo_folder.is_test = namespace.test
     photo_folder.is_verbose = namespace.verbose
-    photo_folder.skip_folder_template = re.compile('[a-zA-Zа-яА-Я]')  # skip folders with comments
+    photo_folder.skip_folder_template = re.compile('[a-zA-Zа-яА-Я]')  # for skip commented folders
     photo_folder.move_photos()
     photo_folder.remove_empty_folders()
     finish_time = datetime.now()
