@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import sys
 import argparse
 import os
 import os.path
@@ -10,7 +11,7 @@ import exifread
 
 DESCRIPTION = 'Arrange photos folder by EXIF DateTimeOriginal from jpeg files.'
 VERSION = "1.0"
-AUTHOR = '(c) usv 2016.'
+AUTHOR = 'USV, 1-2 may 2016'
 EXTENSIONS = ('.jpg', '.jpeg')
 DT_TAGS = ["EXIF DateTimeOriginal"]
 
@@ -47,10 +48,13 @@ class PhotoFolder:
                     print('tag not found', path_file)
             finally:
                 f.close()
+        except IOError as e:
+            if self.is_verbose:
+                print("I/O error({0}): {1}".format(e.errno, e.strerror), path_file)
         except:
             if self.is_verbose:
-                print('failed to open', path_file)
-            return None
+                print('failed to open', path_file, "Unexpected error:", sys.exc_info()[0])
+            raise
         return None
 
     def make_path_file(self, path_file):
@@ -87,10 +91,9 @@ class PhotoFolder:
                 head, ext = os.path.splitext(name)
                 if ext.lower() not in EXTENSIONS:
                     continue
-                if self.skip_folder_template.search(root[len(self.folder):]):
+                if self.skip_folder_template.search(root[len(self.folder):]):  # skip folders with comments
                     continue
-                self.count_moved_files += \
-                    self.move_file(os.path.join(self.folder, name))
+                self.count_moved_files += self.move_file(os.path.join(root, name))
 
     def remove_empty_folders(self):
         for root, dirs, files in os.walk(self.folder):
@@ -121,23 +124,17 @@ if __name__ == '__main__':
     parser = createParser()
     namespace = parser.parse_args()
     print(parser.description)
+    print(namespace)
 
     folder = namespace.folder or os.path.dirname(__file__)
     print('folder', folder)
-    print(namespace)
-
-    #DEBUG {
-    folder = '/media/dune-hdd/Фото'
-    namespace.test = True
-    namespace.verbose = True
-    # DEBUG }
 
     start_time = datetime.now()
     photo_folder = PhotoFolder()
     photo_folder.folder = folder
     photo_folder.is_test = namespace.test
     photo_folder.is_verbose = namespace.verbose
-    photo_folder.skip_folder_template = re.compile('[a-zA-Zа-яА-Я]')
+    photo_folder.skip_folder_template = re.compile('[a-zA-Zа-яА-Я]')  # skip folders with comments
     photo_folder.move_photos()
     photo_folder.remove_empty_folders()
     finish_time = datetime.now()
