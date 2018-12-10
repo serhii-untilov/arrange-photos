@@ -1,118 +1,124 @@
 #!/usr/bin/env python3
-import sys
 import argparse
+from multiprocessing import Pool
 import os
-import os.path
 import re
+import sys
 from datetime import datetime
-
+from functools import partial
 import exifread
 
 
 DESCRIPTION = 'Arrange photos in folder and sub-folders by EXIF DateTimeOriginal from jpeg files.'
-VERSION = '1.0 (2 may 2016)'
+VERSION = '2.0 (9 dec 2018)' # '1.0 (2 may 2016)'
 AUTHOR = 'USV'
 EXTENSIONS = ('.jpg', '.jpeg')
-DT_TAGS = ['EXIF DateTimeOriginal']
+EXIF_TAG_DATE = 'EXIF DateTimeOriginal'
 
 
-class PhotoFolder:
+def singleton(cls):
+    instances = {}
+    def getinstance():
+        if cls not in instances:
+            instances[cls] = cls()
+        return instances[cls]
+    return getinstance
 
-    def __init__(self, path):
-        self.path = path
-        self.is_test = True
-        self.is_verbose = True
-        self.skip_folder_template = None
-        self.count_folders = 0
-        self.count_files = 0
-        self.count_removed_folders = 0
-        self.count_moved_files = 0
 
-    def get_exif_date(self, path_file):
-        dt_value = None
-        try:
-            f = open(path_file, 'rb')
+@singleton
+class FolderChecker:
+    def __init__(self):
+        self.re_exclude = re.compile('[a-zA-Zа-яА-Я]')
+
+    def can_process(self, folder):
+        if self.re_exclude.search(folder):
+            return False
+        return True
+
+
+class FileList:
+    def __init__(self):
+        self.file_list = []
+
+    def __make_file_list__(self, path, photo_path):
+        for root, dirs, files in os.walk(path):
+            folder = os.path.basename(os.path.normpath(root))
+            if (root == photo_path or FolderChecker().can_process(folder) == True):
+                for dir in dirs:
+                    self.__make_file_list__(dir, photo_path)
+                for file in files:
+                    ext = os.path.splitext(file)[1].lower()
+                    if ext in EXTENSIONS:
+                        self.file_list.append(os.path.join(root, file))
+
+    def make(self, path):
+        self.file_list.clear()
+        self.__make_file_list__(path, path)
+        return self.file_list
+
+
+def get_picture_date(file):
+    dt_value = None
+    try:
+        f = open(file, 'rb')
+        tags = exifread.process_file(f)
+        ts = str(tags[EXIF_TAG_DATE]).strip().replace('-', ':')
+        dt_value = datetime.strptime(ts, '%Y:%m:%d %H:%M:%S')
+    except KeyError as e:
+        raise e
+    except IOError as e:
+        raise e
+    except:
+        raise
+    finally:
+        f.close()
+    return dt_value
+
+
+def make_dir(path):
+    if not os.path.exists(path):
+        os.makedirs(path)
+
+
+def move_file(file, root, test):
+    try:
+        date = get_picture_date(file)
+        folder_year = '%4d' % date.year
+        folder_date = '%4d-%02d-%02d' % (date.year, date.month, date.day)
+        file_name = os.path.basename(os.path.normpath(file))
+        new_file = os.path.join(root, folder_year, folder_date, file_name)
+        if (new_file != file):
+            print(new_file)
+            if (test == False):
+                make_dir(os.path.join(root, folder_year))
+                make_dir(os.path.join(root, folder_year, folder_date))
+                os.rename(file, new_file)
+    except KeyError:
+        print('EXIF data not found in file', file)
+    except IOError as e:
+        print('I/O error({0}): {1}'.format(e.errno, e.strerror), file)
+    except:
+        print('Unexpected error ({}) while processing file {}'.format(sys.exc_info()[0], file))
+
+
+def remove_empty_folders(path, test):
+    for root, dirs, files in os.walk(path):
+        for name in dirs:
+            if os.listdir(os.path.join(root, name)):
+                continue
             try:
-                tags = exifread.process_file(f)
-                for tag in DT_TAGS:
-                    try:
-                        ts = str(tags[tag]).strip().replace('-', ':')
-                        dt_value = datetime.strptime(ts, '%Y:%m:%d %H:%M:%S')
-                        break
-                    except:
-                        continue
-                if dt_value:
-                    return dt_value
-                if self.is_verbose:
-                    print('tag not found', path_file)
-            finally:
-                f.close()
-        except IOError as e:
-            if self.is_verbose:
-                print('I/O error({0}): {1}'.format(e.errno, e.strerror), path_file)
-        except:
-            if self.is_verbose:
-                print('failed to open', path_file, 'Unexpected error:', sys.exc_info()[0])
-            raise
-        return None
-
-    def make_path_file(self, path_file):
-        dt_value = self.get_exif_date(path_file)
-        new_path_file = path_file
-        if dt_value:
-            dir_year = '%4d' % dt_value.year
-            dir_date = '%4d-%02d-%02d' % (dt_value.year, dt_value.month, dt_value.day)
-            head, tail = os.path.split(path_file)
-            new_path_file = os.path.join(self.path, dir_year, dir_date, tail)
-        return new_path_file
-
-    def move_file(self, path_file):
-        new_path_file = self.make_path_file(path_file)
-        if new_path_file != path_file and not os.path.isfile(new_path_file):
-            try:
-                new_dir = os.path.dirname(new_path_file)
-                if not os.path.exists(new_dir):
-                    os.makedirs(new_dir)
-                if not self.is_test:
-                    os.rename(path_file, new_path_file)
-                if self.is_verbose:
-                    print('moved', path_file, new_path_file)
-                return 1
+                dir_to_remove = os.path.join(root, name)
+                print("Remove an empty dir " + dir_to_remove)
+                if (test == False):
+                    os.removedirs(dir_to_remove)
             except:
-                if self.is_verbose:
-                    print('failed', path_file, new_path_file)
-        return 0
-
-    def move_photos(self):
-        for root, dirs, files in os.walk(self.path):
-            for name in files:
-                self.count_files += 1
-                head, ext = os.path.splitext(name)
-                if ext.lower() in EXTENSIONS:
-                    if not self.skip_folder_template.search(root[len(self.path):]):
-                        self.count_moved_files += self.move_file(os.path.join(root, name))
-
-    def remove_empty_folders(self):
-        for root, dirs, files in os.walk(self.path):
-            for name in dirs:
-                self.count_folders += 1
-                if os.listdir(os.path.join(root, name)):
-                    continue
-                try:
-                    if not self.is_test:
-                        os.removedirs(os.path.join(root, name))
-                    self.count_removed_folders += 1
-                    if self.is_verbose:
-                        print('folder removed', os.path.join(root, name))
-                except:
-                    continue
+                continue
 
 
 def create_parser():
     parser = argparse.ArgumentParser(description=DESCRIPTION, epilog=AUTHOR, add_help=False)
     parser.add_argument('--path', '-p', action='store', help='Set path to photo\'s folder, by default using current path.')
     parser.add_argument('--test', '-t', action='store_true', help='Switch to test mode, without moving files and removing empty folders.')
-    parser.add_argument('--verbose', '-v', action="store_true", help='Increase output verbosity.')
     parser.add_argument('--version', action='version', version='%(prog)s {}'.format(VERSION), help='Get programm\'s version.')
     parser.add_argument('--help', action='help', help='Help.')
     return parser
@@ -125,19 +131,12 @@ if __name__ == '__main__':
     print(namespace)
 
     start_time = datetime.now()
-    photo_folder = PhotoFolder(os.path.abspath(namespace.path or '.'))
-    print('path', photo_folder.path)
-    photo_folder.is_test = namespace.test
-    photo_folder.is_verbose = namespace.verbose
-    photo_folder.skip_folder_template = re.compile('[a-zA-Zа-яА-Я]')  # for skip commented folders
-    photo_folder.move_photos()
-    photo_folder.remove_empty_folders()
-    finish_time = datetime.now()
 
-    print('start at', start_time)
-    print('finish at', finish_time)
+    path = os.path.abspath(namespace.path or '.')
+    file_list = FileList().make(path)
+    pool = Pool()
+    pool.map(partial(move_file, root = path, test = namespace.test), file_list)
+    remove_empty_folders(path, namespace.test)
+
+    finish_time = datetime.now()
     print('overall time', finish_time - start_time)
-    print(photo_folder.count_files, 'files')
-    print(photo_folder.count_moved_files, 'files moved')
-    print(photo_folder.count_folders, 'folders')
-    print(photo_folder.count_removed_folders, 'folders removed')
